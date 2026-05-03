@@ -2,6 +2,11 @@
 
 namespace App\Providers;
 
+use App\Events\NotificationCreated;
+use App\Listeners\CheckEscalation;
+use App\Listeners\UpdateSubscriberStats;
+use App\Support\TenantContext;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -11,7 +16,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(TenantContext::class);
     }
 
     /**
@@ -19,6 +24,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Event::listen(NotificationCreated::class, UpdateSubscriberStats::class);
+        Event::listen(NotificationCreated::class, CheckEscalation::class);
     }
 }

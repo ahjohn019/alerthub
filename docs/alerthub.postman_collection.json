@@ -1,0 +1,376 @@
+{
+  "info": {
+    "name": "AlertHub API",
+    "_postman_id": "f65f62ef-72fc-45a0-9142-a24c3c6f2ef2",
+    "description": "Postman collection for the AlertHub assignment API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://alerthub.test"
+    },
+    {
+      "key": "org_api_token",
+      "value": "acme-alerts-token"
+    },
+    {
+      "key": "project_id",
+      "value": "1"
+    },
+    {
+      "key": "project_uuid",
+      "value": ""
+    },
+    {
+      "key": "source_key",
+      "value": "github"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{org_api_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Tenant",
+      "item": [
+        {
+          "name": "Current Tenant",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/tenant"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Projects",
+      "item": [
+        {
+          "name": "List Projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/projects?pagination=offset&page=1&per_page=15",
+              "host": ["{{base_url}}"],
+              "path": ["api", "projects"],
+              "query": [
+                {
+                  "key": "pagination",
+                  "value": "offset"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Projects With Includes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/projects?includes=subscribers,alert_rules&pagination=offset&page=1&per_page=15",
+              "host": ["{{base_url}}"],
+              "path": ["api", "projects"],
+              "query": [
+                {
+                  "key": "includes",
+                  "value": "subscribers,alert_rules"
+                },
+                {
+                  "key": "pagination",
+                  "value": "offset"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Payments API\",\n  \"description\": \"Payment alerts and integrations\"\n}"
+            },
+            "url": "{{base_url}}/api/projects"
+          }
+        },
+        {
+          "name": "Get Project Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/projects/{{project_id}}?includes=subscribers,alert_rules,notifications,webhook_sources",
+              "host": ["{{base_url}}"],
+              "path": ["api", "projects", "{{project_id}}"],
+              "query": [
+                {
+                  "key": "includes",
+                  "value": "subscribers,alert_rules,notifications,webhook_sources"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Project",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Payments API Updated\",\n  \"description\": \"Updated description\"\n}"
+            },
+            "url": "{{base_url}}/api/projects/{{project_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subscribers",
+      "item": [
+        {
+          "name": "List Subscribers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/projects/{{project_id}}/subscribers?pagination=offset&page=1&per_page=15",
+              "host": ["{{base_url}}"],
+              "path": ["api", "projects", "{{project_id}}", "subscribers"],
+              "query": [
+                {
+                  "key": "pagination",
+                  "value": "offset"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Subscriber",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ops-team@example.com\",\n  \"external_id\": \"ops-team\",\n  \"name\": \"Ops Team\",\n  \"metadata\": {\n    \"team\": \"ops\"\n  }\n}"
+            },
+            "url": "{{base_url}}/api/projects/{{project_id}}/subscribers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List Notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/projects/{{project_id}}/notifications?status=sent&pagination=offset&page=1&per_page=15",
+              "host": ["{{base_url}}"],
+              "path": ["api", "projects", "{{project_id}}", "notifications"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "sent"
+                },
+                {
+                  "key": "pagination",
+                  "value": "offset"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Notifications With Includes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/projects/{{project_id}}/notifications?includes=subscriber,alert_rule&pagination=cursor&per_page=15",
+              "host": ["{{base_url}}"],
+              "path": ["api", "projects", "{{project_id}}", "notifications"],
+              "query": [
+                {
+                  "key": "includes",
+                  "value": "subscriber,alert_rule"
+                },
+                {
+                  "key": "pagination",
+                  "value": "cursor"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Alert Rules",
+      "item": [
+        {
+          "name": "List Alert Rules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/projects/{{project_id}}/alert-rules?source_type=github&pagination=offset&page=1&per_page=15",
+              "host": ["{{base_url}}"],
+              "path": ["api", "projects", "{{project_id}}", "alert-rules"],
+              "query": [
+                {
+                  "key": "source_type",
+                  "value": "github"
+                },
+                {
+                  "key": "pagination",
+                  "value": "offset"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Alert Rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"GitHub main branch pushes\",\n  \"source_type\": \"github\",\n  \"event_type\": \"push\",\n  \"conditions\": {\n    \"branch\": \"main\"\n  },\n  \"action\": \"notify\",\n  \"priority\": \"medium\",\n  \"is_active\": true\n}"
+            },
+            "url": "{{base_url}}/api/projects/{{project_id}}/alert-rules"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhook Sources",
+      "item": [
+        {
+          "name": "Create Webhook Source",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_key\": \"github\",\n  \"source_type\": \"github\",\n  \"name\": \"GitHub\",\n  \"signing_secret\": null,\n  \"event_mappings\": {\n    \"default_event_type\": \"push\"\n  },\n  \"is_active\": true\n}"
+            },
+            "url": "{{base_url}}/api/projects/{{project_id}}/webhook-sources"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public Webhooks",
+      "auth": {
+        "type": "noauth"
+      },
+      "item": [
+        {
+          "name": "Receive GitHub Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"push\",\n  \"source\": \"github\",\n  \"payload\": {\n    \"ref\": \"refs/heads/main\",\n    \"commits\": [\n      {\n        \"id\": \"abc123\",\n        \"message\": \"Deploy hotfix for payment processing\",\n        \"author\": {\n          \"name\": \"Jane Dev\",\n          \"email\": \"jane@example.com\"\n        },\n        \"timestamp\": \"2024-01-15T10:30:00Z\"\n      }\n    ],\n    \"repository\": {\n      \"full_name\": \"acme/payment-service\"\n    },\n    \"sender\": {\n      \"login\": \"janedev\",\n      \"email\": \"jane@example.com\"\n    }\n  }\n}"
+            },
+            "url": "{{base_url}}/api/webhooks/{{project_uuid}}/{{source_key}}"
+          }
+        }
+      ]
+    }
+  ]
+}

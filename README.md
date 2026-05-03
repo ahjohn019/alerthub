@@ -1,58 +1,109 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# AlertHub
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+AlertHub is a multi-tenant Laravel alert management API. Organizations own projects, projects receive webhook events, and matched alert rules create queued notifications for subscribers.
 
-## About Laravel
-
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
-
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Setup
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate --seed
+php artisan queue:work
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+For this local Laragon workspace, PHPUnit uses a MySQL database named `alerthub_test` because the available PHP binaries do not include `pdo_sqlite`.
 
-## Contributing
+```bash
+php artisan test
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Architecture
 
-## Code of Conduct
+- Tenant resolution lives in `ResolveOrganizationFromBearerToken` and stores the active organization in `TenantContext`.
+- `Project` is scoped by organization, and project-child models use `BelongsToProject` to enforce organization scoping.
+- Webhook processing uses a Chain of Responsibility pipeline: deduplication, payload validation, legacy subscriber resolution, rule evaluation, then notification dispatch.
+- Notification side effects are event driven. `UpdateSubscriberStats` runs before `CheckEscalation`.
+- Queue jobs use uniqueness, retry/backoff settings, and failure handlers.
+- The legacy `AlertMetrics` package is registered through `MetricsServiceProvider`.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## API
 
-## Security Vulnerabilities
+All project API endpoints require:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```http
+Authorization: Bearer {organization_api_token}
+Accept: application/json
+```
 
-## License
+Seeded demo tokens:
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+- `acme-alerts-token`
+- `globex-monitoring-token`
+
+Endpoints:
+
+- `GET /api/projects`
+- `POST /api/projects`
+- `GET /api/projects/{id}`
+- `PUT /api/projects/{id}`
+- `GET /api/projects/{id}/subscribers`
+- `POST /api/projects/{id}/subscribers`
+- `GET /api/projects/{id}/notifications`
+- `GET /api/projects/{id}/alert-rules`
+- `POST /api/projects/{id}/alert-rules`
+- `POST /api/projects/{id}/webhook-sources`
+
+List endpoints support offset pagination by default and cursor pagination with `?pagination=cursor`. Supported relations can be loaded with `includes`, for example:
+
+```http
+GET /api/projects/1?includes=subscribers,alert_rules
+```
+
+## Webhooks
+
+The webhook endpoint is public and identifies the destination by project UUID and source key:
+
+```http
+POST /api/webhooks/{project_uuid}/{source_key}
+```
+
+If a webhook source has a signing secret, send the HMAC SHA-256 signature in `X-AlertHub-Signature` or `X-Hub-Signature-256`.
+
+Example monitoring payload:
+
+```json
+{
+  "event_type": "alert.triggered",
+  "source": "monitoring",
+  "payload": {
+    "alert_id": "mon-789",
+    "severity": "critical",
+    "service": "api-gateway",
+    "message": "Response time exceeded 5s threshold",
+    "contact": {
+      "external_id": "ops-team"
+    }
+  }
+}
+```
+
+## Digest Scheduling
+
+Digest jobs can be scheduled for a project:
+
+```bash
+php artisan alerthub:schedule-digests 1 --date=2026-05-01 --type=daily
+```
+
+## Bug Report
+
+Legacy module investigation and fixes for AH-101 through AH-105 are documented in `BUG_REPORT.md`.
+
+## Demo Flow
+
+1. Run `php artisan migrate --seed`.
+2. Use `GET /api/projects` with `Authorization: Bearer acme-alerts-token`.
+3. Register or use a seeded webhook source for a project.
+4. Send `POST /api/webhooks/{project_uuid}/{source_key}`.
+5. Run a queue worker and inspect `GET /api/projects/{id}/notifications`.
