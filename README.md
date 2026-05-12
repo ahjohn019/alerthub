@@ -40,6 +40,49 @@ php artisan test
 - Background jobs use retries, deduplication, and failure handling.
 - The older `AlertMetrics` package is still included for legacy support.
 
+### Webhook Flow
+
+```mermaid
+flowchart TD
+    A[Webhook arrives] --> B[DeduplicationHandler]
+    B --> C[ValidationHandler]
+    C --> D[SubscriberMatchHandler]
+    D --> E[RuleEvaluationHandler]
+    E --> F[NotificationDispatchHandler]
+    F --> G[Create Notification]
+    G --> H[SendNotification job]
+    H --> I[Update status and stats]
+
+    D -->|no subscriber| X[Stop]
+    E -->|no matching rules| X
+```
+
+What this means:
+
+- `SubscriberMatchHandler` decides who the alert is for.
+- `RuleEvaluationHandler` decides whether the event matches one or more alert rules.
+- `NotificationDispatchHandler` creates one notification per matched rule and queues delivery.
+
+### Data Relationships
+
+```mermaid
+erDiagram
+    ORGANIZATION ||--o{ PROJECT : owns
+    PROJECT ||--o{ SUBSCRIBER : has
+    PROJECT ||--o{ ALERT_RULE : has
+    PROJECT ||--o{ WEBHOOK_SOURCE : has
+    PROJECT ||--o{ NOTIFICATION : has
+    SUBSCRIBER ||--o{ NOTIFICATION : receives
+    ALERT_RULE ||--o{ NOTIFICATION : triggers
+```
+
+How to read it:
+
+- an organization owns many projects
+- a project has many subscribers, alert rules, webhook sources, and notifications
+- each notification belongs to one subscriber and one alert rule
+- the webhook flow uses subscriber matching plus rule matching to create that notification link
+
 ## API
 
 All project API endpoints require:
