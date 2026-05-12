@@ -1,6 +1,6 @@
 # AlertHub
 
-AlertHub is a multi-tenant Laravel alert management API. Organizations own projects, projects receive webhook events, and matched alert rules create queued notifications for subscribers.
+AlertHub is a multi-tenant Laravel API for webhook-driven alert notifications.
 
 ## Setup
 
@@ -20,12 +20,25 @@ php artisan test
 
 ## Architecture
 
-- Tenant resolution lives in `ResolveOrganizationFromBearerToken` and stores the active organization in `TenantContext`.
-- `Project` is scoped by organization, and project-child models use `BelongsToProject` to enforce organization scoping.
-- Webhook processing uses a Chain of Responsibility pipeline: deduplication, payload validation, legacy subscriber resolution, rule evaluation, then notification dispatch.
-- Notification side effects are event driven. `UpdateSubscriberStats` runs before `CheckEscalation`.
-- Queue jobs use uniqueness, retry/backoff settings, and failure handlers.
-- The legacy `AlertMetrics` package is registered through `MetricsServiceProvider`.
+- One organization owns each request, project, and related record.
+- Webhooks are processed in the background and turned into notifications.
+- A created notification triggers follow-up updates for stats and escalation.
+- The webhook pipeline filters duplicates, validates data, matches rules, and creates notifications.
+- `Services/AlertProcessing` keeps that webhook flow in small steps instead of one large file.
+- `ProcessWebhookEvent` handles the incoming webhook, while `SendNotification` updates the notification after it is created.
+- Inside that folder:
+  - `Pipeline` runs each processing step in order.
+  - `WebhookProcessingContext` carries the webhook data through the flow.
+  - `HandlerResult` tells the pipeline whether to continue, stop, or jump to dispatch.
+  - `DeduplicationHandler` skips repeated events.
+  - `ValidationHandler` checks the payload shape.
+  - `SubscriberMatchHandler` finds the subscriber.
+  - `RuleEvaluationHandler` finds the matching alert rules.
+  - `NotificationDispatchHandler` creates the notification row and queues sending.
+- Splitting the flow into small handlers keeps each part focused on one job, so the webhook logic is easier to understand, safer to change, and simpler to test.
+- It also makes it easier to add a new step later, like extra validation, a new matching rule, or a different delivery path, without rewriting the whole flow.
+- Background jobs use retries, deduplication, and failure handling.
+- The older `AlertMetrics` package is still included for legacy support.
 
 ## API
 
@@ -53,6 +66,42 @@ Endpoints:
 - `GET /api/projects/{id}/alert-rules`
 - `POST /api/projects/{id}/alert-rules`
 - `POST /api/projects/{id}/webhook-sources`
+
+## API Controllers
+
+These controllers handle the API routes:
+
+- `ProjectController` handles project list, create, view, and update actions.
+- `ProjectSubscriberController` handles subscriber list and create actions for a project.
+- `ProjectNotificationController` handles notification list actions for a project.
+- `ProjectWebhookSourceController` handles adding webhook sources to a project.
+- `WebhookController` handles incoming public webhook requests and sends them into the processing queue.
+
+In simple terms:
+
+- the `ProjectController` manages the project itself
+- the subscriber and notification controllers manage project data
+- the webhook source controller registers where events come from
+- the webhook controller receives outside events and starts alert processing
+
+## Database Tables
+
+Main app tables:
+
+- `organizations` stores each tenant, its API token, plan, and timezone.
+- `projects` stores alert projects for each organization.
+- `subscribers` stores alert recipients and their notification stats.
+- `alert_rules` stores the conditions that decide when an event becomes an alert.
+- `notifications` stores each created alert notification and its delivery status.
+- `webhook_sources` stores each project webhook endpoint and its signing details.
+
+Laravel support tables:
+
+- `users` stores standard Laravel user accounts.
+- `password_reset_tokens` stores password reset data.
+- `sessions` stores session data when database sessions are enabled.
+- `cache` and `cache_locks` store cache entries and lock data.
+- `jobs`, `job_batches`, and `failed_jobs` store queued jobs, batch tracking, and failures.
 
 List endpoints support offset pagination by default and cursor pagination with `?pagination=cursor`. Supported relations can be loaded with `includes`, for example:
 
@@ -237,6 +286,16 @@ The webhook endpoint is public and identifies the destination by project UUID an
 POST /api/webhooks/{project_uuid}/{source_key}
 ```
 
+In short, this endpoint receives an event, validates it, matches it to a project and subscriber, creates a notification, and queues the send job.
+
+Simple flow:
+
+- webhook arrives
+- event is validated and deduplicated
+- subscriber and alert rule are matched
+- a notification row is created
+- the send job updates that row to `sent` or `escalated`
+
 If a webhook source has a signing secret, send the HMAC SHA-256 signature in `X-AlertHub-Signature` or `X-Hub-Signature-256`.
 
 Example monitoring payload:
@@ -268,6 +327,16 @@ php artisan alerthub:schedule-digests 1 --date=2026-05-01 --type=daily
 ## Bug Report
 
 Legacy module investigation and fixes for AH-101 through AH-105 are documented in `BUG_REPORT.md`.
+
+## AlertMetrics Test
+
+`AlertMetricsIntegrationTest` checks the legacy alert metrics flow end to end:
+
+- project data stays separate
+- webhook subscribers can be matched without email
+- digest jobs run in the right order
+- duplicate digest batches stay unique
+- engagement scores do not leak between digest and realtime use
 
 ## Demo Flow
 
