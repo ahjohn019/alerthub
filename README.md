@@ -27,18 +27,41 @@ php artisan test
 - `Services/AlertProcessing` keeps that webhook flow in small steps instead of one large file.
 - `ProcessWebhookEvent` handles the incoming webhook, while `SendNotification` updates the notification after it is created.
 - Inside that folder:
-  - `Pipeline` runs each processing step in order.
-  - `WebhookProcessingContext` carries the webhook data through the flow.
-  - `HandlerResult` tells the pipeline whether to continue, stop, or jump to dispatch.
-  - `DeduplicationHandler` skips repeated events.
-  - `ValidationHandler` checks the payload shape.
-  - `SubscriberMatchHandler` finds the subscriber.
-  - `RuleEvaluationHandler` finds the matching alert rules.
-  - `NotificationDispatchHandler` creates the notification row and queues sending.
+    - `Pipeline` runs each processing step in order.
+    - `WebhookProcessingContext` carries the webhook data through the flow.
+    - `HandlerResult` tells the pipeline whether to continue, stop, or jump to dispatch.
+    - `DeduplicationHandler` skips repeated events.
+    - `ValidationHandler` checks the payload shape.
+    - `SubscriberMatchHandler` finds the subscriber.
+    - `RuleEvaluationHandler` finds the matching alert rules.
+- `NotificationDispatchHandler` creates the notification row and queues sending.
 - Splitting the flow into small handlers keeps each part focused on one job, so the webhook logic is easier to understand, safer to change, and simpler to test.
 - It also makes it easier to add a new step later, like extra validation, a new matching rule, or a different delivery path, without rewriting the whole flow.
 - Background jobs use retries, deduplication, and failure handling.
 - The older `AlertMetrics` package is still included for legacy support.
+
+## Service Providers
+
+Laravel service providers are the app's startup wiring layer. They register shared services and attach event listeners so the rest of the app can stay focused on business logic.
+
+In this project:
+
+- `AppServiceProvider` registers `TenantContext` as a singleton and wires `NotificationCreated` to the notification follow-up listeners
+- `MetricsServiceProvider` registers the legacy digest services and wires the digest event listener pipeline
+
+What that means in practice:
+
+- when a notification is created, Laravel automatically runs `UpdateSubscriberStats` and `CheckEscalation`
+- when a digest is scheduled, Laravel automatically runs `GenerateDigestId`, `CalculateDigestWindow`, and `AssignDigestPriority`
+- controllers, jobs, and services do not need to manually create or connect these objects
+
+Simple mental model:
+
+```text
+service provider -> registers wiring
+event fires -> Laravel finds listeners
+listeners run -> stats, escalation, digest metadata, and other side effects
+```
 
 ### Webhook Flow
 
@@ -160,71 +183,71 @@ Sample responses based on the actual API resource shapes:
 
 ```json
 {
-  "data": [
-    {
-      "id": 1,
-      "uuid": "2f3c9d8e-7a91-4b8c-9d17-1f7c0e5d1a01",
-      "organization_id": 1,
-      "name": "Payments API",
-      "description": "Payment alerts and integrations",
-      "created_at": "2026-05-01T08:15:00.000000Z",
-      "updated_at": "2026-05-01T08:15:00.000000Z",
-      "subscribers": [
+    "data": [
         {
-          "id": 10,
-          "project_id": 1,
-          "email": "ops-team@example.com",
-          "external_id": "ops-team",
-          "name": "Ops Team",
-          "notification_count": 4,
-          "last_notified_at": "2026-05-02T08:15:00.000000Z",
-          "metadata": {
-            "team": "ops"
-          },
-          "engagement_score": 82.5,
-          "engagement_tier": "high",
-          "created_at": "2026-05-01T08:15:00.000000Z",
-          "updated_at": "2026-05-02T08:15:00.000000Z",
-          "notifications": []
+            "id": 1,
+            "uuid": "2f3c9d8e-7a91-4b8c-9d17-1f7c0e5d1a01",
+            "organization_id": 1,
+            "name": "Payments API",
+            "description": "Payment alerts and integrations",
+            "created_at": "2026-05-01T08:15:00.000000Z",
+            "updated_at": "2026-05-01T08:15:00.000000Z",
+            "subscribers": [
+                {
+                    "id": 10,
+                    "project_id": 1,
+                    "email": "ops-team@example.com",
+                    "external_id": "ops-team",
+                    "name": "Ops Team",
+                    "notification_count": 4,
+                    "last_notified_at": "2026-05-02T08:15:00.000000Z",
+                    "metadata": {
+                        "team": "ops"
+                    },
+                    "engagement_score": 82.5,
+                    "engagement_tier": "high",
+                    "created_at": "2026-05-01T08:15:00.000000Z",
+                    "updated_at": "2026-05-02T08:15:00.000000Z",
+                    "notifications": []
+                }
+            ],
+            "alert_rules": [
+                {
+                    "id": 3,
+                    "project_id": 1,
+                    "name": "Critical monitoring incidents",
+                    "source_type": "monitoring",
+                    "event_type": "alert.triggered",
+                    "conditions": {
+                        "severity": "critical"
+                    },
+                    "action": "escalate",
+                    "priority": "critical",
+                    "is_active": true,
+                    "created_at": "2026-05-01T08:15:00.000000Z",
+                    "updated_at": "2026-05-01T08:15:00.000000Z",
+                    "notifications": []
+                }
+            ],
+            "notifications": [],
+            "webhook_sources": []
         }
-      ],
-      "alert_rules": [
-        {
-          "id": 3,
-          "project_id": 1,
-          "name": "Critical monitoring incidents",
-          "source_type": "monitoring",
-          "event_type": "alert.triggered",
-          "conditions": {
-            "severity": "critical"
-          },
-          "action": "escalate",
-          "priority": "critical",
-          "is_active": true,
-          "created_at": "2026-05-01T08:15:00.000000Z",
-          "updated_at": "2026-05-01T08:15:00.000000Z",
-          "notifications": []
-        }
-      ],
-      "notifications": [],
-      "webhook_sources": []
+    ],
+    "links": {
+        "first": "http://alerthub.test/api/projects?page=1",
+        "last": "http://alerthub.test/api/projects?page=1",
+        "prev": null,
+        "next": null
+    },
+    "meta": {
+        "current_page": 1,
+        "from": 1,
+        "last_page": 1,
+        "path": "http://alerthub.test/api/projects",
+        "per_page": 15,
+        "to": 1,
+        "total": 1
     }
-  ],
-  "links": {
-    "first": "http://alerthub.test/api/projects?page=1",
-    "last": "http://alerthub.test/api/projects?page=1",
-    "prev": null,
-    "next": null
-  },
-  "meta": {
-    "current_page": 1,
-    "from": 1,
-    "last_page": 1,
-    "path": "http://alerthub.test/api/projects",
-    "per_page": 15,
-    "to": 1,
-    "total": 1
-  }
 }
 ```
 
@@ -232,17 +255,17 @@ Sample responses based on the actual API resource shapes:
 
 ```json
 {
-  "id": 1,
-  "uuid": "2f3c9d8e-7a91-4b8c-9d17-1f7c0e5d1a01",
-  "organization_id": 1,
-  "name": "Payments API",
-  "description": "Payment alerts and integrations",
-  "created_at": "2026-05-01T08:15:00.000000Z",
-  "updated_at": "2026-05-01T08:15:00.000000Z",
-  "subscribers": [],
-  "alert_rules": [],
-  "notifications": [],
-  "webhook_sources": []
+    "id": 1,
+    "uuid": "2f3c9d8e-7a91-4b8c-9d17-1f7c0e5d1a01",
+    "organization_id": 1,
+    "name": "Payments API",
+    "description": "Payment alerts and integrations",
+    "created_at": "2026-05-01T08:15:00.000000Z",
+    "updated_at": "2026-05-01T08:15:00.000000Z",
+    "subscribers": [],
+    "alert_rules": [],
+    "notifications": [],
+    "webhook_sources": []
 }
 ```
 
@@ -250,74 +273,74 @@ Sample responses based on the actual API resource shapes:
 
 ```json
 {
-  "data": [
-    {
-      "id": 44,
-      "uuid": "f2b8af19-5f5e-4c65-8d74-9a3e7f1aa301",
-      "project_id": 1,
-      "subscriber_id": 10,
-      "alert_rule_id": 3,
-      "channel": "email",
-      "subject": "Critical monitoring incidents",
-      "body": "Response time exceeded 5s threshold",
-      "payload": {
-        "event_type": "alert.triggered",
-        "severity": "critical"
-      },
-      "status": "sent",
-      "sent_at": "2026-05-02T08:20:00.000000Z",
-      "created_at": "2026-05-02T08:20:00.000000Z",
-      "updated_at": "2026-05-02T08:20:00.000000Z",
-      "subscriber": {
-        "id": 10,
-        "project_id": 1,
-        "email": "ops-team@example.com",
-        "external_id": "ops-team",
-        "name": "Ops Team",
-        "notification_count": 4,
-        "last_notified_at": "2026-05-02T08:15:00.000000Z",
-        "metadata": {
-          "team": "ops"
-        },
-        "engagement_score": 82.5,
-        "engagement_tier": "high",
-        "created_at": "2026-05-01T08:15:00.000000Z",
-        "updated_at": "2026-05-02T08:15:00.000000Z",
-        "notifications": []
-      },
-      "alert_rule": {
-        "id": 3,
-        "project_id": 1,
-        "name": "Critical monitoring incidents",
-        "source_type": "monitoring",
-        "event_type": "alert.triggered",
-        "conditions": {
-          "severity": "critical"
-        },
-        "action": "escalate",
-        "priority": "critical",
-        "is_active": true,
-        "created_at": "2026-05-01T08:15:00.000000Z",
-        "updated_at": "2026-05-01T08:15:00.000000Z",
-        "notifications": []
-      }
+    "data": [
+        {
+            "id": 44,
+            "uuid": "f2b8af19-5f5e-4c65-8d74-9a3e7f1aa301",
+            "project_id": 1,
+            "subscriber_id": 10,
+            "alert_rule_id": 3,
+            "channel": "email",
+            "subject": "Critical monitoring incidents",
+            "body": "Response time exceeded 5s threshold",
+            "payload": {
+                "event_type": "alert.triggered",
+                "severity": "critical"
+            },
+            "status": "sent",
+            "sent_at": "2026-05-02T08:20:00.000000Z",
+            "created_at": "2026-05-02T08:20:00.000000Z",
+            "updated_at": "2026-05-02T08:20:00.000000Z",
+            "subscriber": {
+                "id": 10,
+                "project_id": 1,
+                "email": "ops-team@example.com",
+                "external_id": "ops-team",
+                "name": "Ops Team",
+                "notification_count": 4,
+                "last_notified_at": "2026-05-02T08:15:00.000000Z",
+                "metadata": {
+                    "team": "ops"
+                },
+                "engagement_score": 82.5,
+                "engagement_tier": "high",
+                "created_at": "2026-05-01T08:15:00.000000Z",
+                "updated_at": "2026-05-02T08:15:00.000000Z",
+                "notifications": []
+            },
+            "alert_rule": {
+                "id": 3,
+                "project_id": 1,
+                "name": "Critical monitoring incidents",
+                "source_type": "monitoring",
+                "event_type": "alert.triggered",
+                "conditions": {
+                    "severity": "critical"
+                },
+                "action": "escalate",
+                "priority": "critical",
+                "is_active": true,
+                "created_at": "2026-05-01T08:15:00.000000Z",
+                "updated_at": "2026-05-01T08:15:00.000000Z",
+                "notifications": []
+            }
+        }
+    ],
+    "links": {
+        "first": "http://alerthub.test/api/projects/1/notifications?page=1",
+        "last": "http://alerthub.test/api/projects/1/notifications?page=1",
+        "prev": null,
+        "next": null
+    },
+    "meta": {
+        "current_page": 1,
+        "from": 1,
+        "last_page": 1,
+        "path": "http://alerthub.test/api/projects/1/notifications",
+        "per_page": 15,
+        "to": 1,
+        "total": 1
     }
-  ],
-  "links": {
-    "first": "http://alerthub.test/api/projects/1/notifications?page=1",
-    "last": "http://alerthub.test/api/projects/1/notifications?page=1",
-    "prev": null,
-    "next": null
-  },
-  "meta": {
-    "current_page": 1,
-    "from": 1,
-    "last_page": 1,
-    "path": "http://alerthub.test/api/projects/1/notifications",
-    "per_page": 15,
-    "to": 1,
-    "total": 1
-  }
 }
 ```
 
@@ -345,17 +368,17 @@ Example monitoring payload:
 
 ```json
 {
-  "event_type": "alert.triggered",
-  "source": "monitoring",
-  "payload": {
-    "alert_id": "mon-789",
-    "severity": "critical",
-    "service": "api-gateway",
-    "message": "Response time exceeded 5s threshold",
-    "contact": {
-      "external_id": "ops-team"
+    "event_type": "alert.triggered",
+    "source": "monitoring",
+    "payload": {
+        "alert_id": "mon-789",
+        "severity": "critical",
+        "service": "api-gateway",
+        "message": "Response time exceeded 5s threshold",
+        "contact": {
+            "external_id": "ops-team"
+        }
     }
-  }
 }
 ```
 
