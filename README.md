@@ -361,11 +361,37 @@ Example monitoring payload:
 
 ## Digest Scheduling
 
-Digest jobs can be scheduled for a project:
+Digest scheduling is used to group many alert notifications into a digest instead of sending each one individually right away.
+
+This is useful when a project receives a lot of alerts in a short time. Rather than spamming the subscriber with separate emails, the system collects the alerts for a given day, groups them by subscriber, and sends a summary digest job.
+
+What the scheduler does:
+
+- finds subscribers in the project who already have sent notifications for the selected date
+- collects the matching notification IDs for each subscriber
+- fires the `DigestScheduled` event so digest listeners can set metadata
+- dispatches `ProcessAlertDigest` to build the digest message
+
+What the digest job produces:
+
+- one digest notification per subscriber per batch
+- a subject like `Alert Digest: 5 alerts for 2026-05-01`
+- a body that includes total alert count, high-priority count, digest type, and a list of included alerts
+- a separate engagement score calculated in `digest` context
+
+Command example:
 
 ```bash
 php artisan alerthub:schedule-digests 1 --date=2026-05-01 --type=daily
 ```
+
+Notes:
+
+- `project_id` tells the scheduler which project to process
+- `--date` controls which day’s notifications are grouped
+- `--type` can be `daily` or `weekly`
+- the job is unique per subscriber/date/batch so duplicate digest runs do not stack up
+- the digest pipeline also calculates a delivery window and priority before sending
 
 ## Bug Report
 
